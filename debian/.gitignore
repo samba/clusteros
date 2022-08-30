@@ -1,0 +1,6 @@
+*.iso
+
+workdir
+extract
+initrd
+initrd.gz
