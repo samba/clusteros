@@ -15,7 +15,8 @@ For Kubernetes, I will use K0s, so the host can rely primarily on SSH with a pre
 ## Building the ISO
 
 **Note** the Makefile is written to support only Linux hosts, for composing the ISO.
-(I use a Debian VM on a MacOS laptop.)
+The program `xorriso` is required. On MacOS, `colima` can provide a suitable Debian environment for building ISOs.
+
 
 ```bash
 make iso
@@ -27,3 +28,11 @@ make -e NEED_NONFREE_FIRMWARE=true iso
 [repack]: https://wiki.debian.org/RepackBootableISO "repacking a Debian ISO"
 [preseediso]: https://wiki.debian.org/DebianInstaller/Preseed/EditIso "Adding a preseed config to an ISO"
 [debpreseed]: https://zauner.nllk.net/post/0033-debian-preseed/ "Preseeding Debian"
+
+
+
+[1]: https://github.com/13pgeiser/debian_stable_preseed
+[2]: https://github.com/mknj/simple-debian-docker-installer/blob/master/preseed.cfg
+[3]: https://github.com/kubernetes-sigs/image-builder/blob/master/images/capi/packer/ova/linux/ubuntu/http/base/preseed.cfg
+[4]: https://www.frakkingsweet.com/debian-preseed-and-docker/
+
