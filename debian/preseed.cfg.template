@@ -1,0 +1,239 @@
+#_preseed_V1
+
+
+
+# Configure the locale
+d-i debian-installer/language string en
+d-i debian-installer/locale string en_US.utf8
+d-i debian-installer/country string US
+d-i console-setup/ask_detect boolean false
+d-i console-setup/layout string us
+
+# Configure the keyboard
+d-i kbd-chooser/method select American English
+
+
+# For security, some people may want to disable USB devices...
+# Additional boot parameters can be added here too
+d-i debian-installer/add-kernel-opts string nousb
+
+# Configure the clock
+# In the event that you manage systems in global scale, normalizing on UTC makes life easier.
+d-i time/zone string Etc/UTC
+d-i clock-setup/utc-auto boolean true
+d-i clock-setup/utc boolean true
+d-i clock-setup/ntp boolean true
+d-i clock-setup/ntp-server string debian.pool.ntp.org
+
+#### Configure networking
+
+# Networking is enabled by default
+#d-i netcfg/enable boolean false
+#d-i netcfg/disable_autoconfig boolean true
+
+# Disable WEP. We won't use it anyway.
+d-i netcfg/wireless_wep string
+
+# Generally dynamic neteworking.  Uses DHCP on any available interface.
+d-i hw-detect/load_firmware boolean true
+d-i netcfg/choose_interface select auto
+d-i netcfg/link_wait_timeout string 10
+d-i netcfg/dhcp_timeout string 30
+d-i netcfg/dhcpv6_timeout string 30
+
+
+# Static network configuration.
+#
+# IPv4 example
+#d-i netcfg/get_ipaddress string 192.168.1.42
+#d-i netcfg/get_netmask string 255.255.255.0
+#d-i netcfg/get_gateway string 192.168.1.1
+#d-i netcfg/get_nameservers string 192.168.1.1
+#d-i netcfg/confirm_static boolean true
+#
+# IPv6 example
+#d-i netcfg/get_ipaddress string fc00::2
+#d-i netcfg/get_netmask string ffff:ffff:ffff:ffff::
+#d-i netcfg/get_gateway string fc00::1
+#d-i netcfg/get_nameservers string fc00::1
+#d-i netcfg/confirm_static boolean true
+
+
+# Any hostname and domain names assigned from dhcp take precedence over
+# values set here. However, setting the values still prevents the questions
+# from being shown, even if values come from dhcp.
+# XXX NB: these are used in defining default LVM VGs as well, but get overridden
+# later by the bootstrap script.
+d-i netcfg/get_hostname string ${HOSTNAME}
+d-i netcfg/get_domain string ${DOMAIN}
+
+
+
+# Root account
+d-i passwd/root-login boolean ${ENABLE_ROOT}
+d-i passwd/root-password-crypted password ${ROOT_PASSWORD}
+
+# User account
+d-i passwd/make-user boolean ${CREATE_USER}
+d-i passwd/username string ${USER}
+d-i passwd/user-fullname string ${USER_FULLNAME}
+d-i passwd/user-password-crypted password ${USER_PASSWORD}
+d-i passwd/user/uid string 1000
+d-i passwd/user-default-groups string audio video cdrom libvirt ssh wheel sudo
+# TODO ... more default groups
+
+
+# Configure a non-interactive install
+debconf debconf/frontend select Noninteractive
+
+# Configure the base installation
+d-i pkgsel/install-language-support boolean false
+d-i pkgsel/language-packs multiselect
+tasksel tasksel/first multiselect laptop, ssh-server
+
+
+
+
+
+### Mirror settings
+# Mirror protocol:
+# If you select ftp, the mirror/country string does not need to be set.
+# Default value for the mirror protocol: http.
+#d-i mirror/protocol string ftp
+d-i mirror/country string manual
+d-i mirror/http/hostname string http.us.debian.org
+d-i mirror/http/directory string /debian
+d-i mirror/http/proxy string ${MIRROR_PROXY}
+
+# Suite/version to install
+d-i mirror/suite string ${DEBIAN_SUITE}
+d-i mirror/udeb/suite string ${DEBIAN_SUITE}
+
+# Allow installation of contrib & non-free packages
+d-i apt-setup/non-free-firmware boolean true
+d-i apt-setup/non-free boolean true
+d-i apt-setup/contrib boolean true
+
+# Use default upstream security services
+d-i apt-setup/services-select multiselect security, updates
+d-i apt-setup/security_host string security.debian.org
+
+
+# Minimal autonomous systems behavior...
+d-i debian-installer/allow_unauthenticated boolean false
+d-i base-installer/install-recommends boolean false
+d-i apt-setup/disable-cdrom-entries boolean true
+d-i apt-setup/cdrom/set-first boolean false
+
+
+
+# Install essential components
+# NB: Kubernetes components cannot be installed this way because the key does
+# not get trusted properly.
+d-i pkgsel/include string sudo openssh-server apt-transport-https ca-certificates \
+        curl wget openssl gnupg2 software-properties-common \
+        libvirt-clients libvirt-daemon libvirt-daemon-system \
+        libvirt-daemon-config-network libvirt-daemon-config-nwfilter \
+        qemu-utils qemu-system virtinst randmac \
+        containerd \
+        avahi-daemon \
+        net-tools bridge-utils \
+        unattended-upgrades
+
+# Enable upgrades by default
+d-i pkgsel/upgrade select full-upgrade
+
+# Enable automatic (unattended) upgrades
+d-i unattended-upgrades/enable_auto_updates boolean true
+
+# Optional: disable upgrades during install
+# For my purposes I prefer to keep the host OS updated on bare-metal.
+# d-i pkgsel/upgrade select none
+
+# This is just unnecessary.
+popularity-contest popularity-contest/participate boolean false
+
+
+# Avoid the last message about completed installation.
+d-i finish-install/reboot_in_progress note
+# For setting up K8s/VM hosting infrastructure, we probably don't want it to
+# stay up, actually.
+d-i debian-installer/exit/poweroff boolean false
+
+
+# XXX: this assumes a system with one disk.
+# TODO: attempt some smarter RAID setup later.
+
+
+# This machine is only a Kubernetes node.
+d-i grub-installer/only_debian boolean true
+d-i grub-installer/with_other_os boolean true
+d-i grub-installer/bootdev  string default
+
+# XXX Temporarily... use a simple disk layout scheme just to test the rest.
+d-i partman/mount_style select uuid
+# TODO: use crypto method if you want encryption...
+# TODO: store LUKS2 encryption key in TPM2
+# d-i partman-auto/method string crypto
+d-i partman-auto/method string lvm
+d-i partman-auto-crypto/erase_disks boolean false
+d-i partman-crypto/confirm boolean true
+# d-i partman-crypto/passphrase string ${DISK_CRYPTO_KEY}
+# d-i partman-crypto/passphrase-again string ${DISK_CRYPTO_KEY}
+d-i partman-crypto/weak_passphrase boolean true
+d-i partman-auto-crypto/erase_disks boolean false
+d-i partman-auto-lvm/guided_size string max
+d-i partman-auto-lvm/new_vg_name string vgdefault
+d-i partman-lvm/confirm boolean true
+d-i partman-lvm/confirm_nooverwrite boolean true
+d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-auto/choose_recipe select multi
+d-i partman-partitioning/choose_label select gpt
+d-i partman-partitioning/default_label string gpt
+d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-lvm/confirm boolean true
+d-i partman-lvm/confirm_nooverwrite boolean true
+d-i partman-md/device_remove_md boolean true
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+# TODO: use partman-auto/export_recipe_file to read recipe from another path...
+
+
+# Custom late commands
+d-i preseed/late_command string                                                     \
+    echo "${USER} ALL=(ALL) NOPASSWD: ALL" >  /target/etc/sudoers.d/${USER} ;       \
+    mkdir -p /target/home/${USER}/.ssh/ && \
+        cp -v /cdrom/ssh/* /target/home/${USER}/.ssh/ ;    \
+    chmod 0600  /target/home/${USER}/.ssh/*;                     \
+    chmod 0700  /target/home/${USER}/.ssh;  \
+    chmod 0644 /target/home/${USER}/.ssh/authorized_keys; \
+    in-target chown -R ${USER}:${USER} /target/home/${USER} ; \
+    cat /cdrom/preseed.credentials /cdrom/kube/bootstrap.conf.sh > /target/root/preseed.credentials ;             \
+    cp -v /cdrom/firstboot.sh  /target/firstboot.sh ;      \
+    cp -v /cdrom/firstboot.service /target/etc/systemd/system/firstboot.service; \
+    chmod +x /target/firstboot.sh ; \
+    in-target systemctl enable firstboot; \
+    mkdir -p /target/etc/issue.d; \
+        >>/target/etc/issue.d/ip-addresses.issue echo IP: \\4 \\6; \
+        >>/target/etc/issue.d/ip-addresses.issue echo; \
+        >>/target/etc/issue.d/node.issue echo Host: \\n \\l;\
+        >>/target/etc/issue.d/node.issue echo;\
+    mkdir -p /target/etc/ssh/sshd_config.d; \
+        >>/target/etc/ssh/sshd_config.d/allow-user.conf echo AllowUser ${USER}; \
+    echo "SYSTEM_SERIAL=$(dmidecode -s system-serial-number | grep -v "Not")" >> /target/root/preseed.credentials ; \
+    echo "SYSTEM_RANDOM=$(head /dev/urandom | tr -dc a-z | head -c10)" >> /target/root/preseed.credentials ; \
+    in-target swapoff -a && rm -f /swapfile ; \
+    in-target sed -ri '/\sswap\s/ s/^#?/#/' /etc/fstab ; \
+    in-target apt-get update ; \
+    in-target apt-get install -y tpm2-tools ; \
+    in-target apt-get purge --auto-remove -y ; \
+    echo "DONE"
+
+
+
+
+
+
+ # vim: wrap tabstop=4 shiftwidth=4 softtabstop=0 expandtab textwidth=0 filetype=bash foldmethod=syntax foldcolumn=4 ft=bash

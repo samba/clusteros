@@ -1,0 +1,8 @@
+[Unit]
+Description=Bootstrap script for first boot
+[Service]
+Type=simple
+EnvironmentFile=/root/preseed.credentials
+ExecStart=bash -x /firstboot.sh -s ${SYSTEM_SERIAL} -r ${SYSTEM_RANDOM} -c /root/preseed.credentials
+[Install]
+WantedBy=multi-user.target

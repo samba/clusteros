@@ -1,3 +1,8 @@
 
 debian/two
 debian/one
+debian/temp
+debian/preseed.cfg.gz
+debian/overlay/install/preseed.cfg
+debian/overlay
+debian/overlay/install/preseed.cfg
