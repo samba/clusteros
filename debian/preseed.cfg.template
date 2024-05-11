@@ -89,6 +89,9 @@ debconf debconf/frontend select Noninteractive
 # Configure the base installation
 d-i pkgsel/install-language-support boolean false
 d-i pkgsel/language-packs multiselect
+
+# TODO: reduce this.
+# TODO: eliminate non-essentials -- remove mail server
 tasksel tasksel/first multiselect laptop, ssh-server
 
 
@@ -130,15 +133,18 @@ d-i apt-setup/cdrom/set-first boolean false
 # Install essential components
 # NB: Kubernetes components cannot be installed this way because the key does
 # not get trusted properly.
+# TODO: harden-servers, harden-clients
 d-i pkgsel/include string sudo openssh-server apt-transport-https ca-certificates \
         curl wget openssl gnupg2 software-properties-common \
         libvirt-clients libvirt-daemon libvirt-daemon-system \
         libvirt-daemon-config-network libvirt-daemon-config-nwfilter \
         qemu-utils qemu-system virtinst randmac \
         containerd \
-        avahi-daemon \
+        avahi-daemon avahi-utils \
         net-tools bridge-utils \
-        unattended-upgrades
+        unattended-upgrades \
+		clevis-tpm2 tpm2-initramfs-tool tpm2-tools \
+        nut-server nut-client nut nut-monitor nut-ipmi nut-i2c
 
 # Enable upgrades by default
 d-i pkgsel/upgrade select full-upgrade
@@ -167,73 +173,150 @@ d-i debian-installer/exit/poweroff boolean false
 
 # This machine is only a Kubernetes node.
 d-i grub-installer/only_debian boolean true
-d-i grub-installer/with_other_os boolean true
+d-i grub-installer/with_other_os boolean false
 d-i grub-installer/bootdev  string default
 
-# XXX Temporarily... use a simple disk layout scheme just to test the rest.
-d-i partman/mount_style select uuid
-# TODO: use crypto method if you want encryption...
-# TODO: store LUKS2 encryption key in TPM2
-# d-i partman-auto/method string crypto
-d-i partman-auto/method string lvm
-d-i partman-auto-crypto/erase_disks boolean false
-d-i partman-crypto/confirm boolean true
-# d-i partman-crypto/passphrase string ${DISK_CRYPTO_KEY}
-# d-i partman-crypto/passphrase-again string ${DISK_CRYPTO_KEY}
-d-i partman-crypto/weak_passphrase boolean true
+
+# BEGIN partitioning sequence ---
+# This section may be order-sensitive.
+
+# The disk to partition
+
+# Force UEFI booting ('BIOS compatibility' will be lost). Default: false.
+d-i partman-efi/non_efi_system boolean false
+# Ensure the partition table is GPT - this is required for EFI
+d-i partman-partitioning/choose_label string gpt
+d-i partman-partitioning/default_label string gpt
+
+d-i partman-auto/method string crypto
+d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-md/device_remove_md boolean true
 d-i partman-auto-crypto/erase_disks boolean false
 d-i partman-auto-lvm/guided_size string max
-d-i partman-auto-lvm/new_vg_name string vgdefault
-d-i partman-lvm/confirm boolean true
-d-i partman-lvm/confirm_nooverwrite boolean true
-d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-auto-lvm/new_vg_name string ${LVM_VOLUME_GROUP}
+# d-i partman-auto/disk string /dev/nvme0n1
+# d-i partman-auto/disk string /dev/sda
 d-i partman-auto/choose_recipe select multi
-d-i partman-partitioning/choose_label select gpt
-d-i partman-partitioning/default_label string gpt
-d-i partman-lvm/device_remove_lvm boolean true
-d-i partman-lvm/confirm boolean true
-d-i partman-lvm/confirm_nooverwrite boolean true
-d-i partman-md/device_remove_md boolean true
+# d-i partman-auto/choose_recipe select boot-crypto
+d-i partman-crypto/passphrase       password  ${DISK_CRYPTO_KEY}
+d-i partman-crypto/passphrase-again password  ${DISK_CRYPTO_KEY}
+d-i partman-crypto/weak_passphrase boolean true
+# d-i partman-auto/expert_recipe string boot-crypto :: \
+# 	538 50 1075 free \
+# 		$primary{ } \
+# 		$iflabel{ gpt } \
+# 		$reusemethod{} \
+# 		method{ efi } format{ } \
+# 		mountpoint{ /boot/efi } \
+# 	. \
+# 	256 512 512 ext4 \
+# 		$primary{ } \
+# 		$defaultignore{} \
+# 		method{ format } format{ } \
+# 		use_filesystem{ } filesystem{ ext4 } \
+# 		mountpoint{ /boot } \
+# 	. \
+# 	16 99999999 16 linux-swap \
+# 		$lvmok{ } lv_name{ swap } \
+# 		in_vg { ${LVM_VOLUME_GROUP} } \
+# 		method{ swap } format{ } \
+# 	. \
+# 	2048 16385 32768 ext4 \
+# 		$lvmok{ } lv_name{ var } \
+# 		in_vg { ${LVM_VOLUME_GROUP} } \
+# 		$primary{ } \
+# 		method{ format } format{ } \
+# 		use_filesystem{ } filesystem{ ext4 } \
+# 		mountpoint{ /var } \
+# 	. \
+# 	8096 65536 131072 ext4 \
+# 		$lvmok{ } lv_name{ root } \
+# 		in_vg { ${LVM_VOLUME_GROUP} } \
+# 		$primary{ } $bootable{ } \
+# 		method{ format } format{ } \
+# 		use_filesystem{ } filesystem{ ext4 } \
+# 		mountpoint{ / } \
+# 	. \
 d-i partman-partitioning/confirm_write_new_label boolean true
 d-i partman/choose_partition select finish
 d-i partman/confirm boolean true
 d-i partman/confirm_nooverwrite boolean true
-# TODO: use partman-auto/export_recipe_file to read recipe from another path...
 
+
+d-i partman-lvm/confirm boolean true
+d-i partman-lvm/confirm_nooverwrite boolean true
+d-i partman-md/confirm boolean true
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+
+
+
+
+
+# END partitioning sequence ----
 
 # Custom late commands
+# TODO: disable all password auth on SSH
+# TODO: force default user into restricted bash shell (rbash)
+# TODO: setup fail2ban by default
+# TODO: wrap all routine admin functions in handy scripts...
+#       (kubeadm, cluster upgrades, host OS upgrades)
+# TODO: general hardening
+# TODO: adjust LV sizes -- small home, large var
+# https://www.debian.org/doc/manuals/securing-debian-manual/
 d-i preseed/late_command string                                                     \
     echo "${USER} ALL=(ALL) NOPASSWD: ALL" >  /target/etc/sudoers.d/${USER} ;       \
-    mkdir -p /target/home/${USER}/.ssh/ && \
-        cp -v /cdrom/ssh/* /target/home/${USER}/.ssh/ ;    \
-    chmod 0600  /target/home/${USER}/.ssh/*;                     \
-    chmod 0700  /target/home/${USER}/.ssh;  \
+    mkdir -p /target/home/${USER}/.ssh/ /target/etc/modules.d /target/etc/sysctl.d /target/etc/keys ; \
+    cp -v /cdrom/ssh/* /target/home/${USER}/.ssh/ ;    \
+    chmod 0600 /target/home/${USER}/.ssh/*;                     \
+    chmod 0700 /target/home/${USER}/.ssh;  \
     chmod 0644 /target/home/${USER}/.ssh/authorized_keys; \
-    in-target chown -R ${USER}:${USER} /target/home/${USER} ; \
+    in-target chown -R ${USER}:${USER} /home/${USER} ; \
     cat /cdrom/preseed.credentials /cdrom/kube/bootstrap.conf.sh > /target/root/preseed.credentials ;             \
-    cp -v /cdrom/firstboot.sh  /target/firstboot.sh ;      \
+    cp -v /cdrom/firstboot.sh  /target/opt/firstboot.sh ;      \
     cp -v /cdrom/firstboot.service /target/etc/systemd/system/firstboot.service; \
-    chmod +x /target/firstboot.sh ; \
+    chmod +x /target/opt/firstboot.sh ; \
     in-target systemctl enable firstboot; \
+    in-target systemctl enable ssh ; \
+    in-target systemctl enable containerd ; \
+    >>/target/etc/modules.d/kubernetes.conf  echo "overlay" ; \
+    >>/target/etc/modules.d/kubernetes.conf  echo "br_netfilter" ; \
+    >>/target/etc/sysctl.d/99-kubernetes.conf echo "net.bridge.bridge-nf-call-iptables = 1" ; \
+    >>/target/etc/sysctl.d/99-kubernetes.conf echo "net.bridge.bridge-nf-call-ip6tables = 1" ; \
+    >>/target/etc/sysctl.d/99-kubernetes.conf echo "net.ipv4.ip_forward = 1" ; \
     mkdir -p /target/etc/issue.d; \
         >>/target/etc/issue.d/ip-addresses.issue echo IP: \\4 \\6; \
         >>/target/etc/issue.d/ip-addresses.issue echo; \
-        >>/target/etc/issue.d/node.issue echo Host: \\n \\l;\
-        >>/target/etc/issue.d/node.issue echo;\
     mkdir -p /target/etc/ssh/sshd_config.d; \
         >>/target/etc/ssh/sshd_config.d/allow-user.conf echo AllowUser ${USER}; \
     echo "SYSTEM_SERIAL=$(dmidecode -s system-serial-number | grep -v "Not")" >> /target/root/preseed.credentials ; \
     echo "SYSTEM_RANDOM=$(head /dev/urandom | tr -dc a-z | head -c10)" >> /target/root/preseed.credentials ; \
-    in-target swapoff -a && rm -f /swapfile ; \
+    grep swap /target/etc/initramfs-tools -rl | while read i; do rm -vf ${i}; done ; \
+    in-target swapoff -a ; \
+    in-target rm -f /swapfile ; \
     in-target sed -ri '/\sswap\s/ s/^#?/#/' /etc/fstab ; \
+    in-target umount /home ; \
+	lvremove -y /dev/${LVM_VOLUME_GROUP}/swap* ; \
+    lvreduce -y -r -L 2G /dev/${LVM_VOLUME_GROUP}/home ; \
+    lvextend -y -r -l +100%FREE /dev/${LVM_VOLUME_GROUP}/var ; \
+    in-target mount /home; \
+    dd if=/dev/urandom of=/target/etc/keys/lvm.key bs=512 count=4 ; \
+    echo "${DISK_CRYPTO_KEY}" | cryptsetup luksAddKey `grep UUID /target/etc/crypttab | cut -f 2 -d ' '`  /target/etc/keys/lvm.key ; \
+    sed -i "/UUID=/ { s@none@/etc/keys/lvm.key@; }" /target/etc/crypttab ; \
+    chmod 0600 /target/etc/keys/lvm.key ; \
+    sed -E -i 's@^#(KEYFILE_PATTERN=)@\1/etc/keys/*.key@' /target/etc/cryptsetup-initramfs/conf-hook ; \
+    echo "UMASK=0077" >> /target/etc/initramfs-tools/initramfs.conf ; \
     in-target apt-get update ; \
-    in-target apt-get install -y tpm2-tools ; \
     in-target apt-get purge --auto-remove -y ; \
     echo "DONE"
 
 
 
-
+# XXX This stuff is no longer necessary...
+#    in-target update-initramfs -u ; \
+#
 
 
  # vim: wrap tabstop=4 shiftwidth=4 softtabstop=0 expandtab textwidth=0 filetype=bash foldmethod=syntax foldcolumn=4 ft=bash

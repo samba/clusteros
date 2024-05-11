@@ -45,7 +45,7 @@ $(EXTRACT_PATH)/.disk/mkisofs $(EXTRACT_PATH)/isolinux/isolinux.bin: extract
 define BC
 $(OVERLAY_PATH)/isolinux/$1: $(EXTRACT_PATH)/isolinux/$1 ;
 	mkdir -p $$(dir $$@)
-	sed -E 's@(append auto=true)@\1 file=/cdrom/preseed.cfg@;' < $$^ > $$@
+	sed -E 's@(append auto=true)@\1 file=/cdrom/preseed.cfg@; /^timeout/d; /^ontimeout/d; /^menu autoboot/d; s@include stdmenu.cfg@&\ninclude auto.cfg@;' < $$^ > $$@
 
 # register dependency
 $(OVERLAY_PATH)/.disk/mkisofs: $(OVERLAY_PATH)/isolinux/$1
@@ -53,7 +53,7 @@ $(OVERLAY_PATH)/.disk/mkisofs: $(OVERLAY_PATH)/isolinux/$1
 endef
 
 # extraction rules for each boot config file
-bootfiles := adgtk addrkgtk adtxt addrk adspkgtk
+bootfiles := adgtk addrkgtk adtxt addrk adspkgtk spkgtk menu
 $(foreach b,$(bootfiles),$(eval $(call isocp,isolinux/$(b).cfg,$(EXTRACT_PATH))))
 $(foreach b,$(bootfiles),$(eval $(call BC,$(b).cfg)))
 
@@ -104,7 +104,9 @@ $(OVERLAY_PATH)/install/preseed.cfg: preseed.cfg.template preseed_template_vars.
 diff:
 	for i in amd 386; do command diff -r {extract,overlay}/install.$${i}; done
 
-
+$(OVERLAY_PATH)/boot/grub/grub.cfg: $(EXTRACT_PATH)/boot/grub/grub.cfg
+	mkdir -p $(dir $@)
+	awk -f ./boot-edit.awk $< > $@
 
 .PHONY: mkisofs
 mkisofs: $(OVERLAY_PATH)/.disk/mkisofs
@@ -119,6 +121,7 @@ $(OVERLAY_PATH)/.disk/mkisofs: $(EXTRACT_PATH)/.disk/mkisofs $(MBR_TEMPLATE)
 	echo -e "\t-graft-points" >> $@
 	# echo "\t/install.amd/initrd.gz=$(OVERLAY_PATH)/install.amd/initrd.gz" >> $@
 	# echo "\t/install.386/initrd.gz=$(OVERLAY_PATH)/install.386/initrd.gz" >> $@
+	echo -e "\t/boot/grub/grub.cfg=$(OVERLAY_PATH)/boot/grub/grub.cfg" >> $@
 	echo -e "\t/preseed.cfg=$(OVERLAY_PATH)/install/preseed.cfg" >> $@
 	echo -e "\t/preseed.credentials=$(OVERLAY_PATH)/install/preseed.cfg.creds" >> $@
 	echo -e "\t/firstboot.service=firstboot.service" >> $@
@@ -126,6 +129,7 @@ $(OVERLAY_PATH)/.disk/mkisofs: $(EXTRACT_PATH)/.disk/mkisofs $(MBR_TEMPLATE)
 	echo -e "\t/firstboot.sh=firstboot.sh" >> $@
 	echo -e "\t/ssh=$(OVERLAY_PATH)/ssh" >> $@
 	echo -e "\t/.disk/mksisofs=$@" >>$@
+	echo -e "\t/isolinux/auto.cfg=isolinux_auto.cfg" >> $@
 	echo -e $(foreach b,$(bootfiles),"\t/isolinux/$(b).cfg=$(OVERLAY_PATH)/isolinux/$(b).cfg") >> $@
 	sed -ibak  -E 's/$$/ \\/g' $@
 	echo >> $@
@@ -140,9 +144,10 @@ iso: $(OUTPUT_ISO)
 $(OUTPUT_ISO): $(OVERLAY_PATH)/ssh/authorized_keys
 $(OUTPUT_ISO): $(EXTRACT_PATH)/isolinux/isolinux.bin
 $(OUTPUT_ISO): $(OVERLAY_PATH)/install/preseed.cfg
+$(OUTPUT_ISO): $(OVERLAY_PATH)/boot/grub/grub.cfg
 $(OUTPUT_ISO): firstboot.sh config/bootstrap.sh firstboot.service
 $(OUTPUT_ISO): $(OVERLAY_PATH)/.disk/mkisofs | $(MBR_TEMPLATE)
-	bash -x $<
+	bash -x $< && ls -alh $@
 
 DISK_VOL_SIZE=20G
 .PRECIOUS: temp/%.img

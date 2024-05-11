@@ -35,7 +35,6 @@ main () {
     ALT_USER=$(grep -oE 'USER=(\w+)' ${credfile} | cut -d = -f 2)
     ALT_HOST=$(grep -oE 'HOSTNAME=(\w+)' ${credfile} | cut -d = -f 2)
 
-    setup_kernel
     setup_network_bridge
     setup_containerd
     setup_kubernetes_repo ${KUBERNETES_VERSION}
@@ -53,7 +52,7 @@ main () {
     done
 
 
-    for s in ssh containerd avahi-daemon; do
+    for s in containerd avahi-daemon; do
         systemctl enable ${s}
         systemctl start ${s}
     done
@@ -102,23 +101,6 @@ setup_network_bridge () {
 setup_containerd () {
     containerd config default | sed -E 's/(SystemdCgroup =) false/\1 true/g;' > /etc/containerd/config.toml
     systemctl restart containerd
-}
-
-setup_kernel () {
-    echo "overlay" >> /etc/modules-load.d/containerd.conf
-    echo "br_netfilter" >> /etc/modules-load.d/containerd.conf
-
-    for m in overlay br_netfilter; do
-        modprobe ${m}
-    done
-
-    ( # several lines...
-    echo "net.bridge.bridge-nf-call-iptables = 1"
-    echo "net.bridge.bridge-nf-call-ip6tables = 1"
-    echo "net.ipv4.ip_forward = 1"
-    )>> /etc/sysctl.d/99-kubernetes-k8s.conf
-
-    sysctl --system  # reload
 }
 
 

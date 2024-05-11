@@ -37,8 +37,8 @@ echo "KUBEADM_TOKEN=${KUBEADM_TOKEN}" >&2
 echo "CLUSTER_ENDPOINT=${CLUSTER_ENDPOINT}" >&2
 echo "CLUSTER_SERVICE_NAME=homecloud-$(openssl rand -hex 2)" >&2
 
-
+export LVM_VOLUME_GROUP=vgdefault
 export DEBIAN_SUITE=stable
 export MIRROR_PROXY=
-
+export ASSUME_UEFI=true
 

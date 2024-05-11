@@ -2,9 +2,11 @@
 
 **This project is WORK IN PROGRESS**
 
-Goal:  A simple and easy way to set up standalone  bare metal clusters.
+Goal:  A simple and easy way to set up standalone bare metal clusters on commodity hardware.
 
-The intended use of this project:
+I intend to use this for small-scale clusters at edge, small office, and laboratory environments, using recycled and refurbished hardware.
+
+The intended workflow for users of this project:
 
 * Clone this repo
 * Check the configuration in `debian/config/bootstrap.sh` and adjust to your needs
@@ -68,6 +70,11 @@ make -C debian iso
 
 ## Stuff to do...
 
+- [ ] fix bridge network setup -- currently all network is failing
+- [ ] enroll TPM
+- [ ] setup secure boot
+- [ ] remove swap from partition setup
+- [ ] isolate /var & segments (logs, containers, storage, etc)
 - [ ] make automated install the default grub option in the ISO
 - [ ] setup kubernetes stuff automatically across multiple hosts
 - ... all the TODOs in the code
