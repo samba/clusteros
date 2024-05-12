@@ -11,7 +11,7 @@ d-i console-setup/layout string us
 
 # Configure the keyboard
 d-i kbd-chooser/method select American English
-
+d-i keyboard-configuration/xkb-keymap select us
 
 # For security, some people may want to disable USB devices...
 # Additional boot parameters can be added here too
@@ -258,13 +258,13 @@ d-i partman/confirm_nooverwrite boolean true
 # END partitioning sequence ----
 
 # Custom late commands
+# TODO: set up power saving profile & CPU boost on demand
 # TODO: disable all password auth on SSH
-# TODO: force default user into restricted bash shell (rbash)
 # TODO: setup fail2ban by default
 # TODO: wrap all routine admin functions in handy scripts...
 #       (kubeadm, cluster upgrades, host OS upgrades)
 # TODO: general hardening
-# TODO: adjust LV sizes -- small home, large var
+# TODO: convert LUKS2 key to TPM enrollment, remove from initramfs
 # https://www.debian.org/doc/manuals/securing-debian-manual/
 d-i preseed/late_command string                                                     \
     echo "${USER} ALL=(ALL) NOPASSWD: ALL" >  /target/etc/sudoers.d/${USER} ;       \
@@ -274,6 +274,7 @@ d-i preseed/late_command string                                                 
     chmod 0700 /target/home/${USER}/.ssh;  \
     chmod 0644 /target/home/${USER}/.ssh/authorized_keys; \
     in-target chown -R ${USER}:${USER} /home/${USER} ; \
+    in-target chsh -s ${USER_SHELL} ${USER} ; \
     cat /cdrom/preseed.credentials /cdrom/kube/bootstrap.conf.sh > /target/root/preseed.credentials ;             \
     cp -v /cdrom/firstboot.sh  /target/opt/firstboot.sh ;      \
     cp -v /cdrom/firstboot.service /target/etc/systemd/system/firstboot.service; \
@@ -291,17 +292,22 @@ d-i preseed/late_command string                                                 
         >>/target/etc/issue.d/ip-addresses.issue echo; \
     mkdir -p /target/etc/ssh/sshd_config.d; \
         >>/target/etc/ssh/sshd_config.d/allow-user.conf echo AllowUser ${USER}; \
+        >>/target/etc/ssh/sshd_config.d/allow-user.conf echo 'PasswordAuthentication no' ; \
+        >>/target/etc/ssh/sshd_config.d/allow-user.conf echo 'PermitRootLogin prohibit-password' ; \
     echo "SYSTEM_SERIAL=$(dmidecode -s system-serial-number | grep -v "Not")" >> /target/root/preseed.credentials ; \
     echo "SYSTEM_RANDOM=$(head /dev/urandom | tr -dc a-z | head -c10)" >> /target/root/preseed.credentials ; \
     grep swap /target/etc/initramfs-tools -rl | while read i; do rm -vf ${i}; done ; \
     in-target swapoff -a ; \
     in-target rm -f /swapfile ; \
     in-target sed -ri '/\sswap\s/ s/^#?/#/' /etc/fstab ; \
-    in-target umount /home ; \
+    umount /target/home ; \
 	lvremove -y /dev/${LVM_VOLUME_GROUP}/swap* ; \
-    lvreduce -y -r -L 2G /dev/${LVM_VOLUME_GROUP}/home ; \
-    lvextend -y -r -l +100%FREE /dev/${LVM_VOLUME_GROUP}/var ; \
-    in-target mount /home; \
+    e2fsck -fy /dev/${LVM_VOLUME_GROUP}/home && resize2fs -f -M /dev/${LVM_VOLUME_GROUP}/home  ; \
+    lvreduce -y -L 4G /dev/${LVM_VOLUME_GROUP}/home ; \
+    lvextend -y -l +100%FREE /dev/${LVM_VOLUME_GROUP}/var ; \
+    e2fsck -fy /dev/${LVM_VOLUME_GROUP}/var && resize2fs -f /dev/${LVM_VOLUME_GROUP}/var ; \
+    e2fsck -fy /dev/${LVM_VOLUME_GROUP}/home && resize2fs -f /dev/${LVM_VOLUME_GROUP}/home ; \
+    mount /dev/${LVM_VOLUME_GROUP}/home  /target/home; \
     dd if=/dev/urandom of=/target/etc/keys/lvm.key bs=512 count=4 ; \
     echo "${DISK_CRYPTO_KEY}" | cryptsetup luksAddKey `grep UUID /target/etc/crypttab | cut -f 2 -d ' '`  /target/etc/keys/lvm.key ; \
     sed -i "/UUID=/ { s@none@/etc/keys/lvm.key@; }" /target/etc/crypttab ; \
@@ -314,7 +320,7 @@ d-i preseed/late_command string                                                 
 
 
 
-# XXX This stuff is no longer necessary...
+# NB: after late_command, the installer already runs update-initramfs
 #    in-target update-initramfs -u ; \
 #
 

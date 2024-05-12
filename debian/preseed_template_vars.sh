@@ -13,10 +13,9 @@ export ENABLE_ROOT=true
 USER_PASSWORD_PLAIN=$(openssl rand -base64 8)
 ROOT_PASSWORD_PLAIN=$(openssl rand -base64 10)
 
+export DISK_CRYPTO_KEY=$(openssl rand -hex 36)
 export USER_PASSWORD=$(openssl passwd -1 "${USER_PASSWORD_PLAIN}")
 export ROOT_PASSWORD=$(openssl passwd -1 "${ROOT_PASSWORD_PLAIN}")
-# export DISK_CRYPTO_KEY=$(openssl rand -base64 32)
-export DISK_CRYPTO_KEY=$(openssl rand -hex 3)  # short, weak, simple for testing
 export KUBEADM_CERTS=$(openssl rand -hex 32)
 export KUBEADM_TOKEN="$(openssl rand -hex 3).$(openssl rand -hex 8)"
 export CLUSTER_ENDPOINT="cluster-endpoint-$(openssl rand -hex 2)"
@@ -42,3 +41,6 @@ export DEBIAN_SUITE=stable
 export MIRROR_PROXY=
 export ASSUME_UEFI=true
 
+# TODO: more security
+# export USER_SHELL=/bin/rbash
+export USER_SHELL=/bin/bash
